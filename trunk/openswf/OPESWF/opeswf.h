@@ -90,10 +90,17 @@ public:
 	~SWF_FILE();
 	
 	unsigned int LoadSWF(const char* path);
+	bool IsLoaded();
+	
+	void GetBytes(char* dataOut, const unsigned int numBytes = 1);
+	void GetBits(char* dataOut, const unsigned int numBits);
+	
+	void SetByteOffset(const unsigned int offset);
+	void SetBitOffset(const unsigned int offset);
 private:
 	char* m_pFileData;
-	unsigned int m_bytePos;
-	unsigned int m_bitPos;
+	unsigned int m_byteOffset;
+	unsigned int m_bitOffset;
 	unsigned int m_uiFileSize;
 	bool m_bLoaded;
 };
@@ -148,18 +155,17 @@ class SWF
 		unsigned int LoadSWF(const char* path);
 		
 	private:
-		unsigned int LoadHeader(std::ifstream *file);
+		unsigned int LoadHeader(SWF_FILE *file);
 		unsigned int LoadTag(std::ifstream *file);
 		unsigned int LoadFileAttributesTag(std::ifstream *file);
 		unsigned int LoadDefSceneAndFrameLabelTag(std::ifstream *file);
 		
 		bool m_bIsEnd;
 		
+		SWF_FILE* m_pFile;
 		SWF_HEADER* m_pHeader;
 		SWF_FILE_ATTRIBUTES* m_pAttributes;
 		SWF_DEFINE_SCENE_AND_FRAME_LABEL_DATA* m_pSceneAndFrameLabelData;
 };
-
-
 
 #endif /*__OE_SWF_H__*/

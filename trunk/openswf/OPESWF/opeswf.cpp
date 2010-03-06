@@ -1,8 +1,12 @@
 #include "opeswf.h"
 
+#include <math.h>
+
 SWF_FILE::SWF_FILE()
 {
 	m_pFileData		= NULL;
+	m_byteOffset	= 0;
+	m_bitOffset		= 0;
 	m_uiFileSize	= 0;
 	m_bLoaded		= false;
 }
@@ -28,6 +32,7 @@ unsigned int SWF_FILE::LoadSWF(const char* path)
 #ifdef _DEBUG
 		std::cerr << "Error - Failed to load SWF: \"" << path << "\"" << std::endl;
 #endif
+		m_bLoaded = false;
 		return -1;
 	}
 	
@@ -38,10 +43,52 @@ unsigned int SWF_FILE::LoadSWF(const char* path)
 	m_pFileData = new char[m_uiFileSize];
 	fSwfFile.read(m_pFileData, m_uiFileSize);
 	fSwfFile.close();
+	
+	m_bLoaded = true;
+	
+	return 0;
+}
+
+void SWF_FILE::GetBytes(char* dataOut, const unsigned int numBytes)
+{
+	memcpy(dataOut, (char*)(m_pFileData+m_byteOffset), numBytes);
+	m_byteOffset+=numBytes;
+}
+
+void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
+{
+	unsigned int numBytes = (unsigned int)ceil(numBits / 8.0f);
+	
+	memcpy(dataOut, (char*)(m_pFileData+m_byteOffset), numBytes);
+	
+	m_bitOffset += numBits;
+	
+	if(m_bitOffset>=7)
+	{
+		m_byteOffset+=((m_bitOffset+1)/8);
+		m_bitOffset = ((m_bitOffset+1)%8);
+	}
+	else
+		m_byteOffset-=numBytes;
+}
+
+void SWF_FILE::SetByteOffset(const unsigned int offset)
+{
+	m_byteOffset = offset;
+}
+
+void SWF_FILE::SetBitOffset(const unsigned int offset)
+{
+	m_bitOffset = offset;
+}
+
+bool SWF_FILE::IsLoaded()
+{
+	return m_bLoaded;
 }
 
 //	HACK: This isn't complete.
-unsigned int GetEncodedU32(std::ifstream *file)
+unsigned int GetEncodedU32(std::ifstream* file)
 {
 	unsigned char encoded;
 	file->read((char*)&encoded, sizeof(unsigned char));
@@ -55,6 +102,7 @@ SWF::SWF()
 {
 	m_bIsEnd		= false;
 	
+	m_pFile			= NULL;
 	m_pHeader		= NULL;
 	m_pAttributes	= NULL;
 	m_pSceneAndFrameLabelData = NULL;
@@ -62,6 +110,12 @@ SWF::SWF()
 
 SWF::~SWF()
 {
+	if(m_pFile)
+	{
+		delete m_pFile;
+		m_pFile = NULL;
+	}
+
 	if(m_pHeader)
 	{
 		if(m_pHeader->rect)
@@ -86,79 +140,96 @@ SWF::~SWF()
 	}
 }
 
-unsigned int SWF::LoadSWF(const char *path)
+unsigned int SWF::LoadSWF(const char* path)
 {
-	std::ifstream fSwfFile;
-	fSwfFile.open(path, std::ifstream::in | std::ifstream::binary);
-
-	if(!fSwfFile.is_open())
-	{
-#ifdef _DEBUG
-		std::cerr << "Error - Failed to load SWF: \"" << path << "\"" << std::endl;
-#endif
-		return -1;
-	}
+	m_pFile = new SWF_FILE;
+	m_pFile->LoadSWF(path);
 	
-	LoadHeader(&fSwfFile);
+	if(!m_pFile->IsLoaded())
+		return -1;
+	
+	LoadHeader(m_pFile);
 
-	while(!m_bIsEnd)
-		LoadTag(&fSwfFile);
+	//while(!m_bIsEnd)
+	//	LoadTag(&fSwfFile);
 	
 	return 0;
 }
 
 //	WARNING: The header's rect member is not being loaded correctly!
 //	I've continued working on parsing tags in spite of this.
-unsigned int SWF::LoadHeader(std::ifstream *file)
+unsigned int SWF::LoadHeader(SWF_FILE* file)
 {
 	bool valid = false;
-	file->seekg(0);
+	
+	m_pFile->SetByteOffset(0);
+	
 	m_pHeader = new SWF_HEADER;
 	
-	file->read((char*)&m_pHeader->signature[0], sizeof(unsigned char));
-	file->read((char*)&m_pHeader->signature[1], sizeof(unsigned char));
-	file->read((char*)&m_pHeader->signature[2], sizeof(unsigned char));
+	m_pFile->GetBytes((char*)&m_pHeader->signature[0]);
+	m_pFile->GetBytes((char*)&m_pHeader->signature[1]);
+	m_pFile->GetBytes((char*)&m_pHeader->signature[2]);
 	
-	file->read((char*)&m_pHeader->version, sizeof(unsigned char));
-	file->read((char*)&m_pHeader->fileLength, sizeof(unsigned int));
+	m_pFile->GetBytes((char*)&m_pHeader->version);
+	m_pFile->GetBytes((char*)&m_pHeader->fileLength, sizeof(unsigned int));
 	
 	m_pHeader->rect = new SWF_RECT;
-	file->read((char*)&m_pHeader->rect->Nbits, sizeof(unsigned char));
+	
+	m_pFile->GetBytes((char*)&m_pHeader->rect->Nbits);
 	
 	m_pHeader->rect->Nbits >>= 3;
 	
-	unsigned int remainder = (m_pHeader->rect->Nbits*4) % 8;
-	unsigned int numBytes = remainder == 0 ? (m_pHeader->rect->Nbits*4) / 8 : (m_pHeader->rect->Nbits*4 / 8) + 1;
-	
-	unsigned char* data = new unsigned char[numBytes];
-	file->read((char*)data, sizeof(unsigned char)*numBytes);
-	
-	remainder = (m_pHeader->rect->Nbits) % 8;
-	numBytes = remainder == 0 ? (m_pHeader->rect->Nbits) / 8 : (m_pHeader->rect->Nbits / 8) + 1;
+	unsigned int numBytes = (unsigned int)ceil(m_pHeader->rect->Nbits / 8.0f);
 	
 	m_pHeader->rect->Xmin = new signed char[numBytes];
 	m_pHeader->rect->Xmax = new signed char[numBytes];
 	m_pHeader->rect->Ymin = new signed char[numBytes];
 	m_pHeader->rect->Ymax = new signed char[numBytes];
 	
-	*m_pHeader->rect->Xmin = *data;
-	*m_pHeader->rect->Xmax = *(data+m_pHeader->rect->Nbits);
-	*m_pHeader->rect->Ymin = *(data+m_pHeader->rect->Nbits*2);
-	*m_pHeader->rect->Ymax = *(data+m_pHeader->rect->Nbits*3);
+	m_pFile->GetBits((char*)m_pHeader->rect->Xmin, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)m_pHeader->rect->Xmax, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)m_pHeader->rect->Ymin, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)m_pHeader->rect->Ymax, (unsigned int)m_pHeader->rect->Nbits);
 	
-	delete data;
-	delete m_pHeader->rect->Xmin;
-	delete m_pHeader->rect->Xmax;
-	delete m_pHeader->rect->Ymin;
-	delete m_pHeader->rect->Ymax;
+//	m_pFile->GetBytes((char*)&m_pHeader->rect->Nbits, sizeof(unsigned char));
+//	m_pHeader->rect->Nbits >>= 3;
 	
-	file->read((char*)&m_pHeader->fps, sizeof(unsigned short));
-	file->read((char*)&m_pHeader->numFrames, sizeof(unsigned short));
+//	file->read((char*)&m_pHeader->rect->Nbits, sizeof(unsigned char));
+	
+//	m_pHeader->rect->Nbits >>= 3;
+	
+//	unsigned int remainder = (m_pHeader->rect->Nbits*4) % 8;
+//	unsigned int numBytes = remainder == 0 ? (m_pHeader->rect->Nbits*4) / 8 : (m_pHeader->rect->Nbits*4 / 8) + 1;
+	
+// 	unsigned char* data = new unsigned char[numBytes];
+// 	file->read((char*)data, sizeof(unsigned char)*numBytes);
+// 	
+// 	remainder = (m_pHeader->rect->Nbits) % 8;
+// 	numBytes = remainder == 0 ? (m_pHeader->rect->Nbits) / 8 : (m_pHeader->rect->Nbits / 8) + 1;
+// 	
+// 	m_pHeader->rect->Xmin = new signed char[numBytes];
+// 	m_pHeader->rect->Xmax = new signed char[numBytes];
+// 	m_pHeader->rect->Ymin = new signed char[numBytes];
+// 	m_pHeader->rect->Ymax = new signed char[numBytes];
+// 	
+// 	*m_pHeader->rect->Xmin = *data;
+// 	*m_pHeader->rect->Xmax = *(data+m_pHeader->rect->Nbits);
+// 	*m_pHeader->rect->Ymin = *(data+m_pHeader->rect->Nbits*2);
+// 	*m_pHeader->rect->Ymax = *(data+m_pHeader->rect->Nbits*3);
+// 	
+// 	delete data;
+// 	delete m_pHeader->rect->Xmin;
+// 	delete m_pHeader->rect->Xmax;
+// 	delete m_pHeader->rect->Ymin;
+// 	delete m_pHeader->rect->Ymax;
+// 	
+// 	file->read((char*)&m_pHeader->fps, sizeof(unsigned short));
+// 	file->read((char*)&m_pHeader->numFrames, sizeof(unsigned short));
 	
 	return 0;
 }
 
-unsigned int SWF::LoadTag(std::ifstream *file)
+unsigned int SWF::LoadTag(std::ifstream* file)
 {
 	SWF_TAG tagHeader;
 	unsigned short tagType;
@@ -235,7 +306,7 @@ unsigned int SWF::LoadTag(std::ifstream *file)
 	return 0;
 }
 
-unsigned int SWF::LoadFileAttributesTag(std::ifstream *file)
+unsigned int SWF::LoadFileAttributesTag(std::ifstream* file)
 {
 	m_pAttributes = new SWF_FILE_ATTRIBUTES;
 
@@ -268,7 +339,7 @@ unsigned int SWF::LoadFileAttributesTag(std::ifstream *file)
 }
 
 //	HACK: This isn't complete.
-unsigned int SWF::LoadDefSceneAndFrameLabelTag(std::ifstream *file)
+unsigned int SWF::LoadDefSceneAndFrameLabelTag(std::ifstream* file)
 {
 	m_pSceneAndFrameLabelData = new SWF_DEFINE_SCENE_AND_FRAME_LABEL_DATA;
 	
