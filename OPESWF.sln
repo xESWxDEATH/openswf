@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OPESWF", "OPESWF\OPESWF.vcproj", "{8951D7A5-FF69-4D52-A9CB-45E9E80CCBE2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8951D7A5-FF69-4D52-A9CB-45E9E80CCBE2}.Debug|Win32.ActiveCfg = Debug|Win32
+		{8951D7A5-FF69-4D52-A9CB-45E9E80CCBE2}.Debug|Win32.Build.0 = Debug|Win32
+		{8951D7A5-FF69-4D52-A9CB-45E9E80CCBE2}.Release|Win32.ActiveCfg = Release|Win32
+		{8951D7A5-FF69-4D52-A9CB-45E9E80CCBE2}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
