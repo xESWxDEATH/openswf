@@ -95,6 +95,8 @@ public:
 	void GetBytes(char* dataOut, const unsigned int numBytes = 1);
 	void GetBits(char* dataOut, const unsigned int numBits);
 	
+	unsigned int GetBitOffset() { return m_bitOffset; }
+	unsigned int GetByteOffset() { return m_byteOffset; }
 	void SetByteOffset(const unsigned int offset);
 	void SetBitOffset(const unsigned int offset);
 private:
