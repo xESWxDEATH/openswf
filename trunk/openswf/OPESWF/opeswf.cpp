@@ -66,8 +66,8 @@ void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 	
 	if(m_bitOffset>=7)
 	{
-		m_byteOffset+=((m_bitOffset+1)/8);
-		m_bitOffset = ((m_bitOffset+1)%8);
+		m_byteOffset += (unsigned int)ceil(numBits / 8.0f);
+		m_bitOffset  =  (m_bitOffset%8);
 	}
 	else
 		m_byteOffset-=numBytes;
