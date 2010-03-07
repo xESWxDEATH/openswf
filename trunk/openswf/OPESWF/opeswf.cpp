@@ -58,9 +58,10 @@ void SWF_FILE::GetBytes(char* dataOut, const unsigned int numBytes)
 void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 {
 	unsigned int numBytes = (unsigned int)ceil(numBits / 8.0f);
+//	memcpy(dataOut, (char*)(m_pFileData+m_byteOffset), numBytes);
+	memset(dataOut, 0, numBytes);
 	
-	memcpy(dataOut, (char*)(m_pFileData+m_byteOffset), numBytes);
-	
+	int offs = m_bitOffset;
 	m_bitOffset += numBits;
 	
 	if(m_bitOffset>=7)
@@ -70,6 +71,38 @@ void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 	}
 	else
 		m_byteOffset-=numBytes;
+	
+	char b = m_pFileData[m_byteOffset];
+	m_byteOffset++;
+	
+	char cByte = b;
+	int bitsRem = 8 - offs;
+	cByte &= (1 << (8 - offs)) - 1;
+	cByte >>= offs;
+	
+	char cBit = 8 - offs - 1;
+	char bitCount = 0;
+	int destByte = 0;
+	while(bitCount < numBits)
+	{
+		if(bitCount % 7 == 0 && bitCount != 0)
+			destByte++;
+	
+		if(cByte & 0x80)
+			dataOut[destByte] |= (bitCount == 0) ? 0x01 : (2 << bitCount);
+
+		cByte <<= 1;
+		cByte &= 255;
+		cBit--;
+		bitCount++;
+		
+		if(cBit < 0)
+		{
+			cByte = m_pFileData[m_byteOffset];
+			++m_byteOffset;
+			cBit = 7;
+		}	
+	}
 }
 
 void SWF_FILE::SetByteOffset(const unsigned int offset)
@@ -178,6 +211,8 @@ unsigned int SWF::LoadHeader(SWF_FILE* file)
 	m_pFile->GetBytes((char*)&m_pHeader->rect->Nbits);
 	
 	m_pHeader->rect->Nbits >>= 3;
+	m_pFile->SetBitOffset(m_pFile->GetBitOffset() + 5);
+	m_pFile->SetByteOffset(m_pFile->GetByteOffset() - 1);
 	
 	unsigned int numBytes = (unsigned int)ceil(m_pHeader->rect->Nbits / 8.0f);
 	
