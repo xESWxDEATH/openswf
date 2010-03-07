@@ -64,13 +64,7 @@ void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 	int offs = m_bitOffset;
 	m_bitOffset += numBits;
 	
-	if(m_bitOffset>=7)
-	{
-		m_byteOffset += (unsigned int)ceil(numBits / 8.0f);
-		m_bitOffset  =  (m_bitOffset%8);
-	}
-	else
-		m_byteOffset-=numBytes;
+
 	
 	char b = m_pFileData[m_byteOffset];
 	m_byteOffset++;
@@ -83,26 +77,50 @@ void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 	char cBit = 8 - offs - 1;
 	char bitCount = 0;
 	int destByte = 0;
-	while(bitCount < numBits)
-	{
-		if(bitCount % 7 == 0 && bitCount != 0)
-			destByte++;
+	int curDestBit = bitCount;
 	
+	printf("\nBinary: ");
+	while(bitCount < numBits)
+	{		
+		if(curDestBit > 7)
+		{
+			curDestBit = 0;
+			destByte++;
+		}
+
 		if(cByte & 0x80)
-			dataOut[destByte] |= (bitCount == 0) ? 0x01 : (2 << bitCount);
+		{
+			dataOut[destByte] |= (curDestBit == 0) ? 0x01 : (2 << curDestBit - 1);
+			printf("%d", 1);
+		}
+		
+		else
+			printf("%d", 0);
 
 		cByte <<= 1;
 		cByte &= 255;
 		cBit--;
 		bitCount++;
+		curDestBit++;
 		
 		if(cBit < 0)
 		{
 			cByte = m_pFileData[m_byteOffset];
-			++m_byteOffset;
 			cBit = 7;
 		}	
 	}
+	
+	int res = 0;
+	memcpy(&res, dataOut, numBytes);
+	
+	
+	if(m_bitOffset>=7)
+	{
+		m_byteOffset += (unsigned int)ceil(numBits / 8.0f);
+		m_bitOffset  =  (m_bitOffset%8);
+	}
+	else
+		m_byteOffset-=numBytes;
 }
 
 void SWF_FILE::SetByteOffset(const unsigned int offset)
