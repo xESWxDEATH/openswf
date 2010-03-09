@@ -58,66 +58,65 @@ void SWF_FILE::GetBytes(char* dataOut, const unsigned int numBytes)
 void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 {
 	unsigned int numBytes = (unsigned int)ceil(numBits / 8.0f);
-//	memcpy(dataOut, (char*)(m_pFileData+m_byteOffset), numBytes);
 	memset(dataOut, 0, numBytes);
 	
 	int offs = m_bitOffset;
-	m_bitOffset += numBits;
+	int srcByteOffs = m_byteOffset + (numBytes - 1);
+	int	srcBitOffs = (numBytes * 8) - (numBits + m_bitOffset);
 	
-	char b = m_pFileData[m_byteOffset];
-	m_byteOffset++;
-	
-	char cByte = b;
-	int bitsRem = 8 - offs;
-	cByte &= (1 << (8 - offs)) - 1;
-	cByte >>= offs;
-	
-	char cBit = 8 - offs - 1;
-	char bitCount = 0;
-	int destByte = 0;
-	int curDestBit = bitCount;
-	
-	printf("\nBinary: ");
-	while(bitCount < numBits)
-	{		
-		if(curDestBit > 7)
-		{
-			curDestBit = 0;
-			destByte++;
-		}
-
-		if(cByte & 0x80)
-		{
-			dataOut[destByte] |= (curDestBit == 0) ? 0x01 : (2 << curDestBit - 1);
-			printf("%d", 1);
-		}
-		
-		else
-			printf("%d", 0);
-
-		cByte <<= 1;
-		cByte &= 255;
-		cBit--;
-		bitCount++;
-		curDestBit++;
-		
-		if(cBit < 0)
-		{
-			cByte = m_pFileData[m_byteOffset];
-			cBit = 7;
-		}	
+	// If the offset is greater than the number of dest bytes required, then
+	// the bits extend across nBytes + 1 source bytes. Adjust by adding 1 to
+	// the source byte offset, then taking the absolute difference of the bit 
+	// offset to obtain the source bit offset
+	if(srcBitOffs < 0)
+	{
+		srcByteOffs += 1;
+		srcBitOffs += 8;
 	}
 	
+	// Set source buffer bit/byte locators //
+	m_bitOffset += numBits;
+	m_byteOffset = srcByteOffs;
+
+	// Grab the current read byte //
+	char srcByte = m_pFileData[srcByteOffs];
+	char srcMask, destMask;
+	int destByte = 0;
+	int destBit = 0;
+	int bitCount = 0;
+	
+	while(bitCount < numBits)
+	{
+		srcMask = (srcBitOffs == 0) ? 0x01 : (2 << (srcBitOffs - 1));
+		if(srcByte & srcMask)
+			dataOut[destByte] |= (destBit == 0) ? 0x01 : (2 << (destBit - 1));
+			
+		++srcBitOffs;
+		++bitCount;
+		++destBit;
+		
+		// Need another source byte //
+		if(srcBitOffs > 7)
+		{
+			--srcByteOffs;
+			srcByte = m_pFileData[srcByteOffs];
+			srcBitOffs = 0;
+		}
+		
+		// Write to the next dest byte //
+		if(destBit > 7)
+		{
+			destByte++;
+			destBit = 0;
+		}
+	}
+
 	int res = 0;
 	memcpy(&res, dataOut, numBytes);
-	
-	if(m_bitOffset >= 8)
-	{
-		m_byteOffset += (unsigned int)ceil(numBits / 8.0f);
+
+	if(m_bitOffset>7)
 		m_bitOffset  =  (m_bitOffset%8);
-	}
-	else
-		m_byteOffset-=numBytes;
+	
 }
 
 void SWF_FILE::SetByteOffset(const unsigned int offset)
