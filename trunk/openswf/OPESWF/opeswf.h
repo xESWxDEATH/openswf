@@ -76,9 +76,43 @@ enum SWF_TAGS
 	TAG_DEFINE_FONT4 = 91
 };
 
+enum SWF_FILL_STYLES
+{
+	FILL_STYLE_SOLID = 0x00,
+	FILL_STYLE_LINEAR_GRADIENT = 0x10,
+	FILL_STYLE_RADIAL_GRADIENT = 0x12,
+	FILL_STYLE_FOCAL_RADIAL_GRADIENT = 0x13,
+	FILL_STYLE_REPEATING_BITMAP = 0x40,
+	FILL_STYLE_CLIPPED_BITMAP = 0x41,
+	FILL_STYLE_NON_SMOOTHED_CLIPPED_BITMAP = 0x43
+};
+
 struct SWF_TAG
 {
 	unsigned short tagCodeAndLength;
+};
+
+struct SWF_RGBA
+{
+	unsigned char red;
+	unsigned char green;
+	unsigned char blue;
+	unsigned char alpha;
+};
+
+struct SWF_ARGB
+{
+	unsigned char alpha;
+	unsigned char red;
+	unsigned char green;
+	unsigned char blue;
+};
+
+struct SWF_RGB
+{
+	unsigned char red;
+	unsigned char green;
+	unsigned char blue;
 };
 
 class SWF_FILE
@@ -153,6 +187,99 @@ struct SWF_DEFINE_SCENE_AND_FRAME_LABEL_DATA
 	std::vector<std::string> FrameLabels;
 };
 
+struct SWF_FILL_STYLE_SOLID 
+{
+	unsigned char fillStyleType;
+	SWF_RGBA color;
+};
+
+struct SWF_LINE_STYLE
+{
+	unsigned short width;
+	SWF_RGBA color;
+};
+
+struct SWF_FILL_STYLE_ARRAY
+{
+	unsigned char fillStyleCount;
+	unsigned short fillStyleCountExtended;
+	std::vector<SWF_FILL_STYLE_SOLID> fillStylesSolid;
+};
+
+struct SWF_LINE_STYLE_ARRAY
+{
+	unsigned char lineStyleCount;
+	unsigned short lineStyleCountExtended;
+	SWF_LINE_STYLE* lineStyles;
+};
+
+struct SWF_SHAPE_WITH_STYLE
+{
+	SWF_FILL_STYLE_ARRAY fillStyles;
+	SWF_LINE_STYLE_ARRAY lineStyles;
+	unsigned char NumFillBits;
+	unsigned char NumLineBits;
+};
+
+struct SWF_DEFINE_SHAPE
+{
+	unsigned short shapeId;
+	SWF_RECT shapeBounds;
+	SWF_SHAPE_WITH_STYLE shapes;
+};
+
+
+struct SWF_STYLE_CHANGER_RECORD
+{
+	bool typeFlag;
+	bool stateNewStyles;
+	bool stateLineStlyes;
+	bool stateFillStyle1;
+	bool stateFillStyle0;
+	bool stateMoveTo;
+};
+
+class SWF_SHAPE_RECORD
+{
+	public:
+		SWF_SHAPE_RECORD(){m_type=0;}
+		~SWF_SHAPE_RECORD(){}
+		
+	private:
+		unsigned char m_type;
+};
+
+class SWF_END_SHAPE_RECORD : public SWF_SHAPE_RECORD
+{
+	public:
+		SWF_END_SHAPE_RECORD(){};
+		~SWF_END_SHAPE_RECORD(){};
+		
+		unsigned char m_EndOfShape;
+};
+
+class SWF_STYLE_CHANGE_RECORD : public SWF_SHAPE_RECORD
+{
+	public:
+		bool m_bStateNewStyles;
+		bool m_bStateLineStyle;
+		bool m_bStateFillStyle1;
+		bool m_bStateFillStyle0;
+		bool m_bStateMoveTo;
+
+		char m_MoveBits;
+		int m_iMoveDeltaX;
+		int m_iMoveDeltaY;
+		unsigned int m_iFillStyle0;
+		unsigned int m_iFillStyle1;
+		unsigned int m_iLineStyle;
+		SWF_FILL_STYLE_ARRAY m_fillStyles;
+		SWF_LINE_STYLE_ARRAY m_lineStyles;
+
+		unsigned char m_numFillBits;
+		unsigned char m_numLineBits;
+};
+
 struct SWF_HEADER
 {
 	unsigned char	signature[3];
@@ -171,10 +298,16 @@ class SWF
 		int LoadSWF(const char* path);
 		
 	private:
-		int LoadHeader(SWF_FILE* file);
+		int LoadHeader(SWF_FILE* file);		
 		int LoadTag(SWF_FILE* file);
 		int LoadFileAttributesTag(SWF_FILE* file);
 		int LoadDefSceneAndFrameLabelTag(SWF_FILE* file);
+		int LoadDefineShapeTag(SWF_FILE* file);
+		
+		void GetRect(SWF_RECT* rect);
+		void GetShapeWithStyle(SWF_SHAPE_WITH_STYLE* shapeWithStyle);
+		void GetFillStyles(SWF_FILL_STYLE_ARRAY* fillStyleArray);
+		void GetLineStyles(SWF_LINE_STYLE_ARRAY* lineStyleArray);
 		
 		bool m_bIsEnd;
 		

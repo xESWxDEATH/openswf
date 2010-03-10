@@ -269,32 +269,8 @@ int SWF::LoadHeader(SWF_FILE* file)
 	
 	m_pHeader->rect = new SWF_RECT;
 	
-	m_pFile->GetBits((char*)&m_pHeader->rect->Nbits, 5);
-	
-	unsigned int numBytes = (unsigned int)ceil(m_pHeader->rect->Nbits / 8.0f);
-	
-	char signed *Xmin = new signed char[numBytes];
-	char signed *Xmax = new signed char[numBytes];
-	char signed *Ymin = new signed char[numBytes];
-	char signed *Ymax = new signed char[numBytes];
-	
-	m_pFile->GetBits((char*)Xmin, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)Xmax, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)Ymin, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)Ymax, (unsigned int)m_pHeader->rect->Nbits);
-	
-	m_pHeader->rect->Xmax = 0;
-	
-	memcpy(&m_pHeader->rect->Xmin, Xmin, numBytes);
-	memcpy(&m_pHeader->rect->Xmax, Xmax, numBytes);
-	memcpy(&m_pHeader->rect->Ymin, Ymin, numBytes);
-	memcpy(&m_pHeader->rect->Ymax, Ymax, numBytes);
-	
-	delete []Xmin;
-	delete []Xmax;
-	delete []Ymin;
-	delete []Ymax;
-	
+	GetRect(m_pHeader->rect);
+
 	m_pFile->GetBytes((char*)&m_pHeader->fps, sizeof(unsigned short));
 	m_pFile->GetBytes((char*)&m_pHeader->numFrames, sizeof(unsigned short));
 	
@@ -323,6 +299,9 @@ int SWF::LoadTag(SWF_FILE *file)
  	{
  		case TAG_END:
  			m_bIsEnd = true;
+ 			break;
+ 		case TAG_DEFINE_SHAPE:
+ 			LoadDefineShapeTag(file);
  			break;
  		case TAG_SET_BACKGROUND_COLOR:		
  			unsigned char red, green, blue;
@@ -456,3 +435,136 @@ int SWF::LoadDefSceneAndFrameLabelTag(SWF_FILE* file)
 	
 	return 0;
 }
+
+void SWF::GetRect(SWF_RECT* rect)
+{
+	m_pFile->GetBits((char*)&rect->Nbits, 5);
+
+	unsigned int numBytes = (unsigned int)ceil(m_pHeader->rect->Nbits / 8.0f);
+
+	char signed *xMin = new signed char[numBytes];
+	char signed *xMax = new signed char[numBytes];
+	char signed *yMin = new signed char[numBytes];
+	char signed *yMax = new signed char[numBytes];
+	
+	m_pFile->GetBits((char*)xMin, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)xMax, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)yMin, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)yMax, (unsigned int)m_pHeader->rect->Nbits);
+
+	memcpy(&rect->Xmin, xMin, numBytes);
+	memcpy(&rect->Xmax, xMax, numBytes);
+	memcpy(&rect->Ymin, yMin, numBytes);
+	memcpy(&rect->Ymax, yMax, numBytes);
+
+	delete []xMin;
+	delete []xMax;
+	delete []yMin;
+	delete []yMax;
+}
+
+void SWF::GetFillStyles(SWF_FILL_STYLE_ARRAY* fillStyleArray)
+{
+	m_pFile->GetBytes((char*)&fillStyleArray->fillStyleCount);
+	
+	unsigned int fillStyleCount = fillStyleArray->fillStyleCount;
+	
+	if(fillStyleArray->fillStyleCount == 0xFF)
+	{
+		m_pFile->GetBytes((char*)&fillStyleArray->fillStyleCountExtended, sizeof(unsigned short));
+		fillStyleCount = fillStyleArray->fillStyleCountExtended;
+	}
+	
+	for(unsigned int i = 0; i < fillStyleCount; ++i)
+	{
+		unsigned char fillStyleType = 1;
+		m_pFile->GetBytes((char*)&fillStyleType);
+	}
+}
+
+void SWF::GetLineStyles(SWF_LINE_STYLE_ARRAY* lineStyleArray)
+{
+	m_pFile->GetBytes((char*)&lineStyleArray->lineStyleCount);
+	
+	unsigned int lineStyleCount = lineStyleArray->lineStyleCount;
+	
+	if(lineStyleArray->lineStyleCount == 0xFF)
+	{
+		m_pFile->GetBytes((char*)lineStyleArray->lineStyleCountExtended, sizeof(unsigned short));
+		lineStyleCount = lineStyleArray->lineStyleCountExtended;
+	}
+	
+	for(unsigned int i = 0; i < lineStyleCount; ++i)
+	{
+		unsigned short width = 0;
+		m_pFile->GetBytes((char*)&width, sizeof(unsigned short));
+		
+		SWF_RGB color;
+		m_pFile->GetBytes((char*)&color, sizeof(SWF_RGB));
+	}
+}
+
+void SWF::GetShapeWithStyle(SWF_SHAPE_WITH_STYLE* shapeWithStyle)
+{
+	SWF_FILL_STYLE_ARRAY* pFillStyleArray = new SWF_FILL_STYLE_ARRAY;
+	GetFillStyles(pFillStyleArray);
+	
+	SWF_LINE_STYLE_ARRAY* pLineStyleArray = new SWF_LINE_STYLE_ARRAY;
+	GetLineStyles(pLineStyleArray);
+	
+	unsigned char numFillBits = 0;
+	unsigned char numLineBits = 0;
+	
+	m_pFile->GetBits((char*)&numFillBits, 4);
+	m_pFile->GetBits((char*)&numLineBits, 4);
+	
+	bool endOfShape = false;
+	
+	while(!endOfShape)
+	{
+		unsigned char typeFlag = 2;
+		m_pFile->GetBits((char*)&typeFlag, 1);
+		
+		switch(typeFlag)
+		{
+			case 0:	// None-edge
+			{	
+				char flags = 0;
+				m_pFile->GetBits(&flags, 5);
+				if(flags == 0)
+				{
+					endOfShape = true;
+					break;
+				}
+				else
+				{
+					
+				}
+				break;
+			}
+			case 1: // Edge record
+				break;
+			default:
+				break;
+		}
+	}
+	
+	return;
+}
+
+int SWF::LoadDefineShapeTag(SWF_FILE* file)
+{
+	SWF_DEFINE_SHAPE* pDefineShape = new SWF_DEFINE_SHAPE;
+	
+	file->GetBytes((char*)&pDefineShape->shapeId, sizeof(unsigned short));
+	
+	SWF_RECT* pRect = new SWF_RECT;
+	
+	GetRect(pRect);
+	
+	SWF_SHAPE_WITH_STYLE* pShapeWithStyle = new SWF_SHAPE_WITH_STYLE;
+	GetShapeWithStyle(pShapeWithStyle);
+	
+	return 0;
+}
+
