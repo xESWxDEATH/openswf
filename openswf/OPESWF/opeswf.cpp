@@ -49,10 +49,42 @@ unsigned int SWF_FILE::LoadSWF(const char* path)
 	return 0;
 }
 
+//	NOTE: GetByte assumes the data is byte aligned.
 void SWF_FILE::GetBytes(char* dataOut, const unsigned int numBytes)
 {
+	//	If there's a bit offset currently set then we can assume
+	//	that GetBites was recently called.
+	
+	//	NOTE: Not sure if I'm making the right assumption here, but
+	//		  we're assuming m_bitOffset should be no larger than 7.
+	
+	if(m_bitOffset > 0)
+		m_byteOffset++;
+	
 	memcpy(dataOut, (char*)(m_pFileData+m_byteOffset), numBytes);
 	m_byteOffset+=numBytes;
+	
+	//	If GetBits was recently called then there's going
+	//	to be some excess padding. A simple fix is to reverse
+	//	the byte order.
+	if(m_bitOffset > 0)
+	{
+		m_bitOffset = 0;
+		
+		unsigned int k = numBytes - 1;
+		
+		//	reverse the byte order.
+		while(k != 0)
+		{
+			for(unsigned int i = 0; i < k; ++i)
+			{
+				char d = *(dataOut+i);
+				*(dataOut+i) = *(dataOut+i+1);
+				*(dataOut+i+1) = d;
+			}
+			--k;
+		}
+	}
 }
 
 void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
@@ -80,7 +112,7 @@ void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 
 	// Grab the current read byte //
 	char srcByte = m_pFileData[srcByteOffs];
-	char srcMask, destMask;
+	char srcMask;
 	int destByte = 0;
 	int destBit = 0;
 	int bitCount = 0;
@@ -115,8 +147,7 @@ void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 	memcpy(&res, dataOut, numBytes);
 
 	if(m_bitOffset>7)
-		m_bitOffset  =  (m_bitOffset%8);
-	
+		m_bitOffset = (m_bitOffset%8);
 }
 
 void SWF_FILE::SetByteOffset(const unsigned int offset)
@@ -203,13 +234,12 @@ unsigned int SWF::LoadSWF(const char* path)
 	return 0;
 }
 
-//	WARNING: The header's rect member is not being loaded correctly!
-//	I've continued working on parsing tags in spite of this.
 unsigned int SWF::LoadHeader(SWF_FILE* file)
 {
 	bool valid = false;
 	
 	m_pFile->SetByteOffset(0);
+	m_pFile->SetBitOffset(0);
 	
 	m_pHeader = new SWF_HEADER;
 	
@@ -217,63 +247,56 @@ unsigned int SWF::LoadHeader(SWF_FILE* file)
 	m_pFile->GetBytes((char*)&m_pHeader->signature[1]);
 	m_pFile->GetBytes((char*)&m_pHeader->signature[2]);
 	
+	if(m_pHeader->signature[1]=='W' && m_pHeader->signature[2]=='S')
+	{
+		if(m_pHeader->signature[0]=='C')
+		{
+			std::cout << "This flash is compressed, please uncompress and try again. Exiting..." << std::endl;
+			valid = false;
+		}
+		else
+		if(m_pHeader->signature[0]=='F')
+			valid = true;
+		else
+		{
+			std::cout << "Unknown file format, exiting..." << std::endl;
+			valid = false;
+		}
+	}
+	
 	m_pFile->GetBytes((char*)&m_pHeader->version);
 	m_pFile->GetBytes((char*)&m_pHeader->fileLength, sizeof(unsigned int));
 	
 	m_pHeader->rect = new SWF_RECT;
 	
-	m_pFile->GetBytes((char*)&m_pHeader->rect->Nbits);
-	
-	m_pHeader->rect->Nbits >>= 3;
-	m_pFile->SetBitOffset(m_pFile->GetBitOffset() + 5);
-	m_pFile->SetByteOffset(m_pFile->GetByteOffset() - 1);
+	m_pFile->GetBits((char*)&m_pHeader->rect->Nbits, 5);
 	
 	unsigned int numBytes = (unsigned int)ceil(m_pHeader->rect->Nbits / 8.0f);
 	
-	m_pHeader->rect->Xmin = new signed char[numBytes];
-	m_pHeader->rect->Xmax = new signed char[numBytes];
-	m_pHeader->rect->Ymin = new signed char[numBytes];
-	m_pHeader->rect->Ymax = new signed char[numBytes];
+	char signed *Xmin = new signed char[numBytes];
+	char signed *Xmax = new signed char[numBytes];
+	char signed *Ymin = new signed char[numBytes];
+	char signed *Ymax = new signed char[numBytes];
 	
-	m_pFile->GetBits((char*)m_pHeader->rect->Xmin, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)m_pHeader->rect->Xmax, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)m_pHeader->rect->Ymin, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)m_pHeader->rect->Ymax, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)Xmin, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)Xmax, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)Ymin, (unsigned int)m_pHeader->rect->Nbits);
+	m_pFile->GetBits((char*)Ymax, (unsigned int)m_pHeader->rect->Nbits);
 	
-//	m_pFile->GetBytes((char*)&m_pHeader->rect->Nbits, sizeof(unsigned char));
-//	m_pHeader->rect->Nbits >>= 3;
+	m_pHeader->rect->Xmax = 0;
 	
-//	file->read((char*)&m_pHeader->rect->Nbits, sizeof(unsigned char));
+	memcpy(&m_pHeader->rect->Xmin, Xmin, numBytes);
+	memcpy(&m_pHeader->rect->Xmax, Xmax, numBytes);
+	memcpy(&m_pHeader->rect->Ymin, Ymin, numBytes);
+	memcpy(&m_pHeader->rect->Ymax, Ymax, numBytes);
 	
-//	m_pHeader->rect->Nbits >>= 3;
+	delete []Xmin;
+	delete []Xmax;
+	delete []Ymin;
+	delete []Ymax;
 	
-//	unsigned int remainder = (m_pHeader->rect->Nbits*4) % 8;
-//	unsigned int numBytes = remainder == 0 ? (m_pHeader->rect->Nbits*4) / 8 : (m_pHeader->rect->Nbits*4 / 8) + 1;
-	
-// 	unsigned char* data = new unsigned char[numBytes];
-// 	file->read((char*)data, sizeof(unsigned char)*numBytes);
-// 	
-// 	remainder = (m_pHeader->rect->Nbits) % 8;
-// 	numBytes = remainder == 0 ? (m_pHeader->rect->Nbits) / 8 : (m_pHeader->rect->Nbits / 8) + 1;
-// 	
-// 	m_pHeader->rect->Xmin = new signed char[numBytes];
-// 	m_pHeader->rect->Xmax = new signed char[numBytes];
-// 	m_pHeader->rect->Ymin = new signed char[numBytes];
-// 	m_pHeader->rect->Ymax = new signed char[numBytes];
-// 	
-// 	*m_pHeader->rect->Xmin = *data;
-// 	*m_pHeader->rect->Xmax = *(data+m_pHeader->rect->Nbits);
-// 	*m_pHeader->rect->Ymin = *(data+m_pHeader->rect->Nbits*2);
-// 	*m_pHeader->rect->Ymax = *(data+m_pHeader->rect->Nbits*3);
-// 	
-// 	delete data;
-// 	delete m_pHeader->rect->Xmin;
-// 	delete m_pHeader->rect->Xmax;
-// 	delete m_pHeader->rect->Ymin;
-// 	delete m_pHeader->rect->Ymax;
-// 	
-// 	file->read((char*)&m_pHeader->fps, sizeof(unsigned short));
-// 	file->read((char*)&m_pHeader->numFrames, sizeof(unsigned short));
+	m_pFile->GetBytes((char*)&m_pHeader->fps, sizeof(unsigned short));
+	m_pFile->GetBytes((char*)&m_pHeader->numFrames, sizeof(unsigned short));
 	
 	return 0;
 }

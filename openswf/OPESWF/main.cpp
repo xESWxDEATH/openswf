@@ -5,7 +5,7 @@ unsigned int main()
 {
 	SWF* pSwf = new SWF;
 	
-	pSwf->LoadSWF("lol.swf");
+	pSwf->LoadSWF("lol4.swf");
 	
 	delete pSwf;
 	

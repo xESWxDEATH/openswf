@@ -110,14 +110,28 @@ private:
 class SWF_RECT
 {
 	public:
-		SWF_RECT(){};
+		SWF_RECT()
+		{
+			Xmin = 0;
+			Xmax = 0;
+			Ymin = 0;
+			Ymax = 0;
+			Nbits = 0;
+		};
 		~SWF_RECT(){};
 		
 		unsigned char Nbits;
-		signed char* Xmin;
-		signed char* Xmax;
-		signed char* Ymin;
-		signed char* Ymax;
+		
+		//	HACK: We're making the assumption that
+		//		  the values we get from GetBits are
+		//		  not larger than 4 bytes. While it's
+		//		  possible to get larger than 4 byte values
+		//		  we believe it's highly unlikely.
+
+		int Xmin;
+		int Xmax;
+		int Ymin;
+		int Ymax;
 };
 
 struct SWF_FILE_ATTRIBUTES
