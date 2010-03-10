@@ -22,7 +22,7 @@ SWF_FILE::~SWF_FILE()
 	m_bLoaded = false;
 }
 
-unsigned int SWF_FILE::LoadSWF(const char* path)
+int SWF_FILE::LoadSWF(const char* path)
 {
 	std::ifstream fSwfFile;
 	fSwfFile.open(path, std::ifstream::in | std::ifstream::binary);
@@ -143,9 +143,6 @@ void SWF_FILE::GetBits(char* dataOut, const unsigned int numBits)
 		}
 	}
 
-	int res = 0;
-	memcpy(&res, dataOut, numBytes);
-
 	if(m_bitOffset>7)
 		m_bitOffset = (m_bitOffset%8);
 }
@@ -166,10 +163,10 @@ bool SWF_FILE::IsLoaded()
 }
 
 //	HACK: This isn't complete.
-unsigned int GetEncodedU32(std::ifstream* file)
+unsigned int GetEncodedU32(SWF_FILE* file)
 {
 	unsigned char encoded;
-	file->read((char*)&encoded, sizeof(unsigned char));
+	file->GetBytes((char*)&encoded, sizeof(unsigned char));
 	if((encoded & 0x80) == 0)
 		return encoded;
 	
@@ -218,7 +215,7 @@ SWF::~SWF()
 	}
 }
 
-unsigned int SWF::LoadSWF(const char* path)
+int SWF::LoadSWF(const char* path)
 {
 	m_pFile = new SWF_FILE;
 	m_pFile->LoadSWF(path);
@@ -228,13 +225,13 @@ unsigned int SWF::LoadSWF(const char* path)
 	
 	LoadHeader(m_pFile);
 
-	//while(!m_bIsEnd)
-	//	LoadTag(&fSwfFile);
+	while(!m_bIsEnd)
+		LoadTag(m_pFile);
 	
 	return 0;
 }
 
-unsigned int SWF::LoadHeader(SWF_FILE* file)
+int SWF::LoadHeader(SWF_FILE* file)
 {
 	bool valid = false;
 	
@@ -263,6 +260,9 @@ unsigned int SWF::LoadHeader(SWF_FILE* file)
 			valid = false;
 		}
 	}
+	
+	if(!valid)
+		return -1;
 	
 	m_pFile->GetBytes((char*)&m_pHeader->version);
 	m_pFile->GetBytes((char*)&m_pHeader->fileLength, sizeof(unsigned int));
@@ -301,89 +301,89 @@ unsigned int SWF::LoadHeader(SWF_FILE* file)
 	return 0;
 }
 
-unsigned int SWF::LoadTag(std::ifstream* file)
+int SWF::LoadTag(SWF_FILE *file)
 {
 	SWF_TAG tagHeader;
 	unsigned short tagType;
 	unsigned short tagLength;
-
-	file->read((char*)&tagHeader.tagCodeAndLength, sizeof(unsigned short));
-
+	
+	file->GetBytes((char*)&tagHeader.tagCodeAndLength, sizeof(unsigned short));
 	tagType = tagHeader.tagCodeAndLength >> 6;
 	tagLength = tagHeader.tagCodeAndLength & 0x3F;
+
 	unsigned int tagLengthLong = 0;
 	bool isLongTag = false;
 	if(tagLength == 0x3F)
-	{
-		isLongTag = true;
-		file->read((char*)&tagLengthLong, sizeof(unsigned int));
-	}
-	
-	switch(tagType)
-	{
-		case TAG_END:
-			m_bIsEnd = true;
-			break;
-		case TAG_SET_BACKGROUND_COLOR:		
-			unsigned char red, green, blue;
-			file->read((char*)&red, sizeof(char));
-			file->read((char*)&green, sizeof(char));
-			file->read((char*)&blue, sizeof(char));
+ 	{
+ 		isLongTag = true;
+ 		file->GetBytes((char*)&tagLengthLong, sizeof(unsigned int));
+ 	}
+ 	
+ 	switch(tagType)
+ 	{
+ 		case TAG_END:
+ 			m_bIsEnd = true;
+ 			break;
+ 		case TAG_SET_BACKGROUND_COLOR:		
+ 			unsigned char red, green, blue;
+ 			file->GetBytes((char*)&red, sizeof(char));
+ 			file->GetBytes((char*)&green, sizeof(char));
+ 			file->GetBytes((char*)&blue, sizeof(char));
 #ifdef _DEBUG
-			std::cout << "Dumping Tag[SetBackgroundColor]..." << std::endl;
-			std::cout << "Tag[FileAttributes]:RGB:Red\t= " << (unsigned int)red << std::endl;
-			std::cout << "Tag[FileAttributes]:RGB:Green\t= " << (unsigned int)green << std::endl;
-			std::cout << "Tag[FileAttributes]:RGB:Blue\t= " << (unsigned int)blue << std::endl;
+ 			std::cout << "Dumping Tag[SetBackgroundColor]..." << std::endl;
+ 			std::cout << "Tag[FileAttributes]:RGB:Red\t= " << (unsigned int)red << std::endl;
+ 			std::cout << "Tag[FileAttributes]:RGB:Green\t= " << (unsigned int)green << std::endl;
+ 			std::cout << "Tag[FileAttributes]:RGB:Blue\t= " << (unsigned int)blue << std::endl;
 #endif
-			break;
-		case TAG_FILE_ATTRIBUTES:
-			LoadFileAttributesTag(file);
-			break;
-		case TAG_METADATA:
+ 			break;
+ 		case TAG_FILE_ATTRIBUTES:
+ 			LoadFileAttributesTag(file);
+ 			break;
+ 		case TAG_METADATA:
 #ifdef _DEBUG
-			std::cout << "Dumping Tag[Metadata]..." << std::endl;
+ 			std::cout << "Dumping Tag[Metadata]..." << std::endl;
 #endif
-			char* data;
-			if(isLongTag)
-			{
-				data = new char[tagLengthLong];
-				file->read((char*)data, sizeof(char)*tagLengthLong);
+ 			char* data;
+ 			if(isLongTag)
+ 			{
+ 				data = new char[tagLengthLong];
+ 				file->GetBytes((char*)data, sizeof(char)*tagLengthLong);
 #ifdef _DEBUG
-				std::cout << data << std::endl;
+ 				std::cout << data << std::endl;
 #endif
-			}
+ 			}
+ 
+ 			delete []data;
+ 			break;
+ 		case TAG_DEFINE_SCENE_AND_FRAME_LABEL_DATA:
+ 			LoadDefSceneAndFrameLabelTag(file);
+ 			break;
+ 		default:
+#ifdef _DEBUG
+ 			std::cout << "Unsupported Tag Type:" << tagType << "\t\t" << "Tag Length: " << tagLength;
+#endif
+ 			unsigned int pos = file->GetByteOffset();
+ 
+ 			if(isLongTag)
+ 				file->SetByteOffset(pos + tagLengthLong);
+ 			else
+ 				file->SetByteOffset(pos + tagLength);
+ 			break;
+ 	}
 
-			delete []data;
-			break;
-		case TAG_DEFINE_SCENE_AND_FRAME_LABEL_DATA:
-			LoadDefSceneAndFrameLabelTag(file);
-			break;
-		default:
-#ifdef _DEBUG
-			std::cout << "Unsupported Tag Type:" << tagType << "\t\t" << "Tag Length: " << tagLength;
-#endif
-			unsigned int pos = file->tellg();
-
-			if(isLongTag)
-				file->seekg(pos + tagLengthLong);
-			else
-				file->seekg(pos + tagLength);
-			break;
-	}
-	
 #ifdef _DEBUG	
-	std::cout << std::endl;
+ 	std::cout << std::endl;
 #endif
-
+ 
 	return 0;
 }
 
-unsigned int SWF::LoadFileAttributesTag(std::ifstream* file)
+int SWF::LoadFileAttributesTag(SWF_FILE* file)
 {
 	m_pAttributes = new SWF_FILE_ATTRIBUTES;
 
 	unsigned int fileAttributes = 0;
-	file->read((char*)&fileAttributes, sizeof(unsigned int));
+	file->GetBytes((char*)&fileAttributes, sizeof(unsigned int));
 	
 	bool useNetwork			= fileAttributes & 0x80;
 	bool useActionScript3	= fileAttributes & 0x10;
@@ -411,7 +411,7 @@ unsigned int SWF::LoadFileAttributesTag(std::ifstream* file)
 }
 
 //	HACK: This isn't complete.
-unsigned int SWF::LoadDefSceneAndFrameLabelTag(std::ifstream* file)
+int SWF::LoadDefSceneAndFrameLabelTag(SWF_FILE* file)
 {
 	m_pSceneAndFrameLabelData = new SWF_DEFINE_SCENE_AND_FRAME_LABEL_DATA;
 	
@@ -425,11 +425,11 @@ unsigned int SWF::LoadDefSceneAndFrameLabelTag(std::ifstream* file)
 		
 		m_pSceneAndFrameLabelData->FrameOffsets.push_back(GetEncodedU32(file));
 			
-		file->read((char*)&charbuff, sizeof(unsigned char));
+		file->GetBytes((char*)&charbuff, sizeof(unsigned char));
 		while(charbuff != 0)
 		{
 			name.push_back(charbuff);
-			file->read((char*)&charbuff, sizeof(unsigned char));
+			file->GetBytes((char*)&charbuff, sizeof(unsigned char));
 		}
 		
 		m_pSceneAndFrameLabelData->Names.push_back(std::string(name));		
@@ -444,11 +444,11 @@ unsigned int SWF::LoadDefSceneAndFrameLabelTag(std::ifstream* file)
 		
 		m_pSceneAndFrameLabelData->FrameNums.push_back(GetEncodedU32(file));
 		
-		file->read((char*)&charbuff, sizeof(unsigned char));
+		file->GetBytes((char*)&charbuff, sizeof(unsigned char));
 		while(charbuff != 0)
 		{
 			label.push_back(charbuff);
-			file->read((char*)&charbuff, sizeof(unsigned char));
+			file->GetBytes((char*)&charbuff, sizeof(unsigned char));
 		}
 		
 		m_pSceneAndFrameLabelData->FrameLabels.push_back(std::string(label));
