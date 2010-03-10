@@ -8,8 +8,6 @@
 #include <fstream>
 #include <vector>
 
-unsigned int GetEncodedU32(std::ifstream *file);
-
 enum SWF_TAGS
 {
 	TAG_END = 0,
@@ -89,7 +87,7 @@ public:
 	SWF_FILE();
 	~SWF_FILE();
 	
-	unsigned int LoadSWF(const char* path);
+	int LoadSWF(const char* path);
 	bool IsLoaded();
 	
 	void GetBytes(char* dataOut, const unsigned int numBytes = 1);
@@ -106,6 +104,8 @@ private:
 	unsigned int m_uiFileSize;
 	bool m_bLoaded;
 };
+
+unsigned int GetEncodedU32(SWF_FILE *file);
 
 class SWF_RECT
 {
@@ -168,13 +168,13 @@ class SWF
 	public:
 		SWF();
 		~SWF();
-		unsigned int LoadSWF(const char* path);
+		int LoadSWF(const char* path);
 		
 	private:
-		unsigned int LoadHeader(SWF_FILE *file);
-		unsigned int LoadTag(std::ifstream *file);
-		unsigned int LoadFileAttributesTag(std::ifstream *file);
-		unsigned int LoadDefSceneAndFrameLabelTag(std::ifstream *file);
+		int LoadHeader(SWF_FILE* file);
+		int LoadTag(SWF_FILE* file);
+		int LoadFileAttributesTag(SWF_FILE* file);
+		int LoadDefSceneAndFrameLabelTag(SWF_FILE* file);
 		
 		bool m_bIsEnd;
 		
