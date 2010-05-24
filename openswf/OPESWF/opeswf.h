@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <map>
 
 enum SWF_TAGS
 {
@@ -85,11 +86,6 @@ enum SWF_FILL_STYLES
 	FILL_STYLE_REPEATING_BITMAP = 0x40,
 	FILL_STYLE_CLIPPED_BITMAP = 0x41,
 	FILL_STYLE_NON_SMOOTHED_CLIPPED_BITMAP = 0x43
-};
-
-struct SWF_TAG
-{
-	unsigned short tagCodeAndLength;
 };
 
 struct SWF_RGBA
@@ -210,74 +206,69 @@ struct SWF_LINE_STYLE_ARRAY
 {
 	unsigned char lineStyleCount;
 	unsigned short lineStyleCountExtended;
-	SWF_LINE_STYLE* lineStyles;
+	std::vector<SWF_LINE_STYLE> lineStyles;
 };
 
 struct SWF_SHAPE_WITH_STYLE
 {
-	SWF_FILL_STYLE_ARRAY fillStyles;
-	SWF_LINE_STYLE_ARRAY lineStyles;
+	SWF_FILL_STYLE_ARRAY* fillStyles;
+	SWF_LINE_STYLE_ARRAY* lineStyles;
 	unsigned char NumFillBits;
 	unsigned char NumLineBits;
 };
 
-struct SWF_DEFINE_SHAPE
+struct SWF_RECORD_HEADER
 {
-	unsigned short shapeId;
-	SWF_RECT shapeBounds;
-	SWF_SHAPE_WITH_STYLE shapes;
+	unsigned short tagType;
+	unsigned int tagLengthLong;
 };
 
+//	For simplicity we'll always use the long record header
+class SWF_DEFINE_TAG
+{
+	public:
+		SWF_DEFINE_TAG(){};
+		SWF_DEFINE_TAG(SWF_RECORD_HEADER& recordHeader);
+		~SWF_DEFINE_TAG(){};
+		virtual bool Load(SWF_FILE* pFile) = 0;
+		
+		unsigned short GetCharacterID(){return characterID;}
+	protected:
+		SWF_RECORD_HEADER recordHeaderLong;
+		unsigned short characterID;	
+};
 
-struct SWF_STYLE_CHANGER_RECORD
+class SWF_DEFINE_SHAPE : public SWF_DEFINE_TAG
+{
+	public:
+		SWF_DEFINE_SHAPE(){};
+		SWF_DEFINE_SHAPE(SWF_RECORD_HEADER& recordHeader);
+		~SWF_DEFINE_SHAPE(){};
+		bool Load(SWF_FILE* pFile);
+		
+	private:		
+		void GetShapeWithStyle(SWF_FILE* pFile);
+		void GetFillStyles(SWF_FILE* pFile);
+		void GetLineStyles(SWF_FILE* pFile);
+		void GetShapeRecords(SWF_FILE* pFile);
+		
+		SWF_RECT* shapeBounds;
+		
+		//	SHAPEWITHSTYLE
+		SWF_FILL_STYLE_ARRAY m_FillStyles;
+		SWF_LINE_STYLE_ARRAY m_LineStyles;
+		unsigned char m_numFillBits;
+		unsigned char m_numLineBits;
+};
+
+struct SWF_STYLE_CHANGE_RECORD
 {
 	bool typeFlag;
 	bool stateNewStyles;
-	bool stateLineStlyes;
+	bool stateLineStyle;
 	bool stateFillStyle1;
 	bool stateFillStyle0;
 	bool stateMoveTo;
-};
-
-class SWF_SHAPE_RECORD
-{
-	public:
-		SWF_SHAPE_RECORD(){m_type=0;}
-		~SWF_SHAPE_RECORD(){}
-		
-	private:
-		unsigned char m_type;
-};
-
-class SWF_END_SHAPE_RECORD : public SWF_SHAPE_RECORD
-{
-	public:
-		SWF_END_SHAPE_RECORD(){};
-		~SWF_END_SHAPE_RECORD(){};
-		
-		unsigned char m_EndOfShape;
-};
-
-class SWF_STYLE_CHANGE_RECORD : public SWF_SHAPE_RECORD
-{
-	public:
-		bool m_bStateNewStyles;
-		bool m_bStateLineStyle;
-		bool m_bStateFillStyle1;
-		bool m_bStateFillStyle0;
-		bool m_bStateMoveTo;
-
-		char m_MoveBits;
-		int m_iMoveDeltaX;
-		int m_iMoveDeltaY;
-		unsigned int m_iFillStyle0;
-		unsigned int m_iFillStyle1;
-		unsigned int m_iLineStyle;
-		SWF_FILL_STYLE_ARRAY m_fillStyles;
-		SWF_LINE_STYLE_ARRAY m_lineStyles;
-
-		unsigned char m_numFillBits;
-		unsigned char m_numLineBits;
 };
 
 struct SWF_HEADER
@@ -290,24 +281,21 @@ struct SWF_HEADER
 	unsigned short  numFrames;
 };
 
+
 class SWF
 {
 	public:
 		SWF();
 		~SWF();
 		int LoadSWF(const char* path);
+		static void GetRect(SWF_RECT* rect, SWF_FILE* pFile);
 		
 	private:
 		int LoadHeader(SWF_FILE* file);		
 		int LoadTag(SWF_FILE* file);
 		int LoadFileAttributesTag(SWF_FILE* file);
 		int LoadDefSceneAndFrameLabelTag(SWF_FILE* file);
-		int LoadDefineShapeTag(SWF_FILE* file);
-		
-		void GetRect(SWF_RECT* rect);
-		void GetShapeWithStyle(SWF_SHAPE_WITH_STYLE* shapeWithStyle);
-		void GetFillStyles(SWF_FILL_STYLE_ARRAY* fillStyleArray);
-		void GetLineStyles(SWF_LINE_STYLE_ARRAY* lineStyleArray);
+		int LoadDefineShapeTag(SWF_RECORD_HEADER* pRecordHeader);
 		
 		bool m_bIsEnd;
 		
@@ -315,6 +303,8 @@ class SWF
 		SWF_HEADER* m_pHeader;
 		SWF_FILE_ATTRIBUTES* m_pAttributes;
 		SWF_DEFINE_SCENE_AND_FRAME_LABEL_DATA* m_pSceneAndFrameLabelData;
+		
+		std::map<unsigned short, SWF_DEFINE_TAG*> m_Dictionary;
 };
 
 #endif /*__OE_SWF_H__*/
