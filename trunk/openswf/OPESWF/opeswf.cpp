@@ -269,7 +269,7 @@ int SWF::LoadHeader(SWF_FILE* file)
 	
 	m_pHeader->rect = new SWF_RECT;
 	
-	GetRect(m_pHeader->rect);
+	GetRect(m_pHeader->rect, m_pFile);
 
 	m_pFile->GetBytes((char*)&m_pHeader->fps, sizeof(unsigned short));
 	m_pFile->GetBytes((char*)&m_pHeader->numFrames, sizeof(unsigned short));
@@ -279,21 +279,25 @@ int SWF::LoadHeader(SWF_FILE* file)
 
 int SWF::LoadTag(SWF_FILE *file)
 {
-	SWF_TAG tagHeader;
 	unsigned short tagType;
-	unsigned short tagLength;
+	unsigned int tagLengthLong;
 	
-	file->GetBytes((char*)&tagHeader.tagCodeAndLength, sizeof(unsigned short));
-	tagType = tagHeader.tagCodeAndLength >> 6;
-	tagLength = tagHeader.tagCodeAndLength & 0x3F;
-
-	unsigned int tagLengthLong = 0;
+	unsigned short tagCodeAndLength = 0;
+	
+	file->GetBytes((char*)&tagCodeAndLength, sizeof(unsigned short));
+	tagType = tagCodeAndLength >> 6;
+	tagLengthLong = tagCodeAndLength & 0x3F;
+	
 	bool isLongTag = false;
-	if(tagLength == 0x3F)
+	if(tagLengthLong == 0x3F)
  	{
  		isLongTag = true;
  		file->GetBytes((char*)&tagLengthLong, sizeof(unsigned int));
  	}
+ 	
+ 	SWF_RECORD_HEADER recordHeader;
+ 	recordHeader.tagType = tagType;
+ 	recordHeader.tagLengthLong = tagLengthLong;
  	
  	switch(tagType)
  	{
@@ -301,7 +305,7 @@ int SWF::LoadTag(SWF_FILE *file)
  			m_bIsEnd = true;
  			break;
  		case TAG_DEFINE_SHAPE:
- 			LoadDefineShapeTag(file);
+ 			LoadDefineShapeTag(&recordHeader);
  			break;
  		case TAG_SET_BACKGROUND_COLOR:		
  			unsigned char red, green, blue;
@@ -339,14 +343,11 @@ int SWF::LoadTag(SWF_FILE *file)
  			break;
  		default:
 #ifdef _DEBUG
- 			std::cout << "Unsupported Tag Type:" << tagType << "\t\t" << "Tag Length: " << tagLength;
+ 			std::cout << "Unsupported Tag Type:" << tagType << "\t\t" << "Tag Length: " << tagLengthLong;
 #endif
  			unsigned int pos = file->GetByteOffset();
  
- 			if(isLongTag)
- 				file->SetByteOffset(pos + tagLengthLong);
- 			else
- 				file->SetByteOffset(pos + tagLength);
+ 			file->SetByteOffset(pos + tagLengthLong);
  			break;
  	}
 
@@ -436,26 +437,26 @@ int SWF::LoadDefSceneAndFrameLabelTag(SWF_FILE* file)
 	return 0;
 }
 
-void SWF::GetRect(SWF_RECT* rect)
+void SWF::GetRect(SWF_RECT* pRect, SWF_FILE* pFile)
 {
-	m_pFile->GetBits((char*)&rect->Nbits, 5);
+	pFile->GetBits((char*)&pRect->Nbits, 5);
 
-	unsigned int numBytes = (unsigned int)ceil(m_pHeader->rect->Nbits / 8.0f);
+	unsigned int numBytes = (unsigned int)ceil(pRect->Nbits / 8.0f);
 
 	char signed *xMin = new signed char[numBytes];
 	char signed *xMax = new signed char[numBytes];
 	char signed *yMin = new signed char[numBytes];
 	char signed *yMax = new signed char[numBytes];
 	
-	m_pFile->GetBits((char*)xMin, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)xMax, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)yMin, (unsigned int)m_pHeader->rect->Nbits);
-	m_pFile->GetBits((char*)yMax, (unsigned int)m_pHeader->rect->Nbits);
+	pFile->GetBits((char*)xMin, (unsigned int)pRect->Nbits);
+	pFile->GetBits((char*)xMax, (unsigned int)pRect->Nbits);
+	pFile->GetBits((char*)yMin, (unsigned int)pRect->Nbits);
+	pFile->GetBits((char*)yMax, (unsigned int)pRect->Nbits);
 
-	memcpy(&rect->Xmin, xMin, numBytes);
-	memcpy(&rect->Xmax, xMax, numBytes);
-	memcpy(&rect->Ymin, yMin, numBytes);
-	memcpy(&rect->Ymax, yMax, numBytes);
+	memcpy(&pRect->Xmin, xMin, numBytes);
+	memcpy(&pRect->Xmax, xMax, numBytes);
+	memcpy(&pRect->Ymin, yMin, numBytes);
+	memcpy(&pRect->Ymax, yMax, numBytes);
 
 	delete []xMin;
 	delete []xMax;
@@ -463,108 +464,161 @@ void SWF::GetRect(SWF_RECT* rect)
 	delete []yMax;
 }
 
-void SWF::GetFillStyles(SWF_FILL_STYLE_ARRAY* fillStyleArray)
-{
-	m_pFile->GetBytes((char*)&fillStyleArray->fillStyleCount);
+void SWF_DEFINE_SHAPE::GetFillStyles(SWF_FILE* pFile)
+{	
+	pFile->GetBytes((char*)&m_FillStyles.fillStyleCount);
+	m_FillStyles.fillStyleCountExtended = 0;
 	
-	unsigned int fillStyleCount = fillStyleArray->fillStyleCount;
-	
-	if(fillStyleArray->fillStyleCount == 0xFF)
-	{
-		m_pFile->GetBytes((char*)&fillStyleArray->fillStyleCountExtended, sizeof(unsigned short));
-		fillStyleCount = fillStyleArray->fillStyleCountExtended;
-	}
-	
-	for(unsigned int i = 0; i < fillStyleCount; ++i)
-	{
-		unsigned char fillStyleType = 1;
-		m_pFile->GetBytes((char*)&fillStyleType);
-	}
+	if(m_FillStyles.fillStyleCount==0xFF)
+		pFile->GetBytes((char*)&m_FillStyles.fillStyleCountExtended, sizeof(unsigned short));
+
+	unsigned int size = m_FillStyles.fillStyleCount == 0xFF ? 
+						m_FillStyles.fillStyleCountExtended : 
+						m_FillStyles.fillStyleCount;
+
+ 	for(unsigned int i = 0; i < size; ++i)
+ 	{
+ 		unsigned char fillStyleType = 1;
+ 		pFile->GetBytes((char*)&fillStyleType);
+ 		
+ 		if(fillStyleType == 0)
+ 		{
+ 			SWF_FILL_STYLE_SOLID solidFillStyle;
+ 			SWF_RGBA rgba;
+ 			rgba.red	= 0;
+ 			rgba.green	= 0;
+ 			rgba.blue	= 0;
+ 			rgba.alpha	= 255;
+ 			pFile->GetBytes((char*)&rgba, 3);
+ 			solidFillStyle.fillStyleType = fillStyleType;
+ 			solidFillStyle.color = rgba;
+ 			
+ 			m_FillStyles.fillStylesSolid.push_back(solidFillStyle);
+ 			
+ 			std::cout << "Loaded solid fill style [" << (unsigned int)rgba.red << 
+ 			" " << (unsigned int)rgba.green << " " << (unsigned int)rgba.blue << "]" << std::endl;
+		}
+ 	}
 }
 
-void SWF::GetLineStyles(SWF_LINE_STYLE_ARRAY* lineStyleArray)
+void SWF_DEFINE_SHAPE::GetLineStyles(SWF_FILE* pFile)
 {
-	m_pFile->GetBytes((char*)&lineStyleArray->lineStyleCount);
+	pFile->GetBytes((char*)&m_LineStyles.lineStyleCount);
+	m_LineStyles.lineStyleCountExtended = 0;
 	
-	unsigned int lineStyleCount = lineStyleArray->lineStyleCount;
-	
-	if(lineStyleArray->lineStyleCount == 0xFF)
+	if(m_LineStyles.lineStyleCount==0xFF)
+		pFile->GetBytes((char*)&m_LineStyles.lineStyleCountExtended, sizeof(unsigned short));
+
+	unsigned int size = m_LineStyles.lineStyleCount == 0xFF ? 
+						m_LineStyles.lineStyleCountExtended : 
+						m_LineStyles.lineStyleCount;
+
+	for(unsigned int i = 0; i < size; ++i)
 	{
-		m_pFile->GetBytes((char*)lineStyleArray->lineStyleCountExtended, sizeof(unsigned short));
-		lineStyleCount = lineStyleArray->lineStyleCountExtended;
-	}
-	
-	for(unsigned int i = 0; i < lineStyleCount; ++i)
-	{
-		unsigned short width = 0;
-		m_pFile->GetBytes((char*)&width, sizeof(unsigned short));
+		SWF_LINE_STYLE lineStyle;
 		
-		SWF_RGB color;
-		m_pFile->GetBytes((char*)&color, sizeof(SWF_RGB));
+		unsigned int lineWidth = 0;
+		pFile->GetBytes((char*)&lineWidth, sizeof(unsigned int));
+		
+		SWF_RGBA rgba;
+		rgba.red	= 0;
+		rgba.green	= 0;
+		rgba.blue	= 0;
+		rgba.alpha	= 255;
+		pFile->GetBytes((char*)&rgba, 3);
+		
+		m_LineStyles.lineStyles.push_back(lineStyle);
+		
+		std::cout << "Loaded line style [" << (unsigned int)rgba.red << 
+		" " << (unsigned int)rgba.green << " " << (unsigned int)rgba.blue << "]" << std::endl;
 	}
 }
 
-void SWF::GetShapeWithStyle(SWF_SHAPE_WITH_STYLE* shapeWithStyle)
+void SWF_DEFINE_SHAPE::GetShapeRecords(SWF_FILE* pFile)
 {
-	SWF_FILL_STYLE_ARRAY* pFillStyleArray = new SWF_FILL_STYLE_ARRAY;
-	GetFillStyles(pFillStyleArray);
-	
-	SWF_LINE_STYLE_ARRAY* pLineStyleArray = new SWF_LINE_STYLE_ARRAY;
-	GetLineStyles(pLineStyleArray);
-	
-	unsigned char numFillBits = 0;
-	unsigned char numLineBits = 0;
-	
-	m_pFile->GetBits((char*)&numFillBits, 4);
-	m_pFile->GetBits((char*)&numLineBits, 4);
-	
-	bool endOfShape = false;
-	
-	while(!endOfShape)
+	bool endOfShapeRecord = false;
+	while(!endOfShapeRecord)
 	{
-		unsigned char typeFlag = 2;
-		m_pFile->GetBits((char*)&typeFlag, 1);
+		unsigned char typeFlag;
+		pFile->GetBits((char*)&typeFlag, 1);
 		
 		switch(typeFlag)
 		{
-			case 0:	// None-edge
-			{	
-				char flags = 0;
-				m_pFile->GetBits(&flags, 5);
-				if(flags == 0)
+			case 0:	//	None-edge
+			{
+				char typeFlag = 0;
+				pFile->GetBits(&typeFlag, 1);
+				
+				if(typeFlag == 0)
 				{
-					endOfShape = true;
+					endOfShapeRecord = true;
 					break;
 				}
 				else
 				{
-					
+					SWF_STYLE_CHANGE_RECORD scr;
+					scr.stateNewStyles	= 0;
+					scr.stateLineStyle	= 0;
+					scr.stateFillStyle1	= 0;
+					scr.stateFillStyle0 = 0;
+					scr.stateMoveTo		= 0;
+					pFile->GetBits((char*)&scr, 5);
 				}
-				break;
 			}
-			case 1: // Edge record
-				break;
-			default:
-				break;
+			case 1:
+			{
+				std::cout << "EDGE RECORD" << std::endl;
+			}
 		}
 	}
+}
+
+void SWF_DEFINE_SHAPE::GetShapeWithStyle(SWF_FILE* pFile)
+{
+	GetFillStyles(pFile);
+	GetLineStyles(pFile);
+	
+	unsigned char numFillBits = 0;
+	unsigned char numLineBits = 0;
+	
+	pFile->GetBits((char*)&numFillBits, 4);
+	pFile->GetBits((char*)&numLineBits, 4);
+	
+	m_numFillBits = numFillBits;
+	m_numLineBits = numLineBits;
+	
+	GetShapeRecords(pFile);
 	
 	return;
 }
 
-int SWF::LoadDefineShapeTag(SWF_FILE* file)
+SWF_DEFINE_SHAPE::SWF_DEFINE_SHAPE(SWF_RECORD_HEADER& recordHeader)
 {
-	SWF_DEFINE_SHAPE* pDefineShape = new SWF_DEFINE_SHAPE;
-	
-	file->GetBytes((char*)&pDefineShape->shapeId, sizeof(unsigned short));
-	
+	characterID = 0;
+	recordHeaderLong = recordHeader;
+}
+
+bool SWF_DEFINE_SHAPE::Load(SWF_FILE* pFile)
+{	
+	pFile->GetBytes((char*)&characterID, sizeof(unsigned short));
+
 	SWF_RECT* pRect = new SWF_RECT;
+
+	SWF::GetRect(pRect, pFile);
 	
-	GetRect(pRect);
-	
+	shapeBounds = pRect;
+
 	SWF_SHAPE_WITH_STYLE* pShapeWithStyle = new SWF_SHAPE_WITH_STYLE;
-	GetShapeWithStyle(pShapeWithStyle);
+	GetShapeWithStyle(pFile);
+	return true;
+}
+
+int SWF::LoadDefineShapeTag(SWF_RECORD_HEADER* pRecordHeader)
+{
+	SWF_DEFINE_SHAPE* pDefineShape = new SWF_DEFINE_SHAPE(*pRecordHeader);
+	pDefineShape->Load(m_pFile);
+	
+	m_Dictionary.insert(std::pair<unsigned short, SWF_DEFINE_SHAPE*>(pDefineShape->GetCharacterID(), pDefineShape));
 	
 	return 0;
 }
-
