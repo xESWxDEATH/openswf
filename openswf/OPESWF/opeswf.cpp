@@ -1,4 +1,5 @@
 #include "opeswf.h"
+#include <gl/glut.h>
 
 #include <math.h>
 
@@ -307,16 +308,13 @@ int SWF::LoadTag(SWF_FILE *file)
  		case TAG_DEFINE_SHAPE:
  			LoadDefineShapeTag(&recordHeader);
  			break;
- 		case TAG_SET_BACKGROUND_COLOR:		
- 			unsigned char red, green, blue;
- 			file->GetBytes((char*)&red, sizeof(char));
- 			file->GetBytes((char*)&green, sizeof(char));
- 			file->GetBytes((char*)&blue, sizeof(char));
+ 		case TAG_SET_BACKGROUND_COLOR:
+ 			file->GetBytes((char*)&m_BackgroundColor, sizeof(char)*3);
 #ifdef _DEBUG
  			std::cout << "Dumping Tag[SetBackgroundColor]..." << std::endl;
- 			std::cout << "Tag[FileAttributes]:RGB:Red\t= " << (unsigned int)red << std::endl;
- 			std::cout << "Tag[FileAttributes]:RGB:Green\t= " << (unsigned int)green << std::endl;
- 			std::cout << "Tag[FileAttributes]:RGB:Blue\t= " << (unsigned int)blue << std::endl;
+ 			std::cout << "Tag[FileAttributes]:RGB:Red\t= " << (unsigned int)m_BackgroundColor.red << std::endl;
+ 			std::cout << "Tag[FileAttributes]:RGB:Green\t= " << (unsigned int)m_BackgroundColor.green << std::endl;
+ 			std::cout << "Tag[FileAttributes]:RGB:Blue\t= " << (unsigned int)m_BackgroundColor.blue << std::endl;
 #endif
  			break;
  		case TAG_FILE_ATTRIBUTES:
@@ -464,7 +462,7 @@ void SWF::GetRect(SWF_RECT* pRect, SWF_FILE* pFile)
 	delete []yMax;
 }
 
-void SWF_DEFINE_SHAPE::GetFillStyles(SWF_FILE* pFile)
+void SWF_DEFINE_SHAPE::ParseFillStyles(SWF_FILE* pFile)
 {	
 	pFile->GetBytes((char*)&m_FillStyles.fillStyleCount);
 	m_FillStyles.fillStyleCountExtended = 0;
@@ -501,7 +499,7 @@ void SWF_DEFINE_SHAPE::GetFillStyles(SWF_FILE* pFile)
  	}
 }
 
-void SWF_DEFINE_SHAPE::GetLineStyles(SWF_FILE* pFile)
+void SWF_DEFINE_SHAPE::ParseLineStyles(SWF_FILE* pFile)
 {
 	pFile->GetBytes((char*)&m_LineStyles.lineStyleCount);
 	m_LineStyles.lineStyleCountExtended = 0;
@@ -534,7 +532,7 @@ void SWF_DEFINE_SHAPE::GetLineStyles(SWF_FILE* pFile)
 	}
 }
 
-void SWF_DEFINE_SHAPE::GetShapeRecords(SWF_FILE* pFile)
+void SWF_DEFINE_SHAPE::ParseShapeRecords(SWF_FILE* pFile)
 {
 	bool endOfShapeRecord = false;
 	while(!endOfShapeRecord)
@@ -573,10 +571,10 @@ void SWF_DEFINE_SHAPE::GetShapeRecords(SWF_FILE* pFile)
 	}
 }
 
-void SWF_DEFINE_SHAPE::GetShapeWithStyle(SWF_FILE* pFile)
+void SWF_DEFINE_SHAPE::ParseShapeWithStyle(SWF_FILE* pFile)
 {
-	GetFillStyles(pFile);
-	GetLineStyles(pFile);
+	ParseFillStyles(pFile);
+	ParseLineStyles(pFile);
 	
 	unsigned char numFillBits = 0;
 	unsigned char numLineBits = 0;
@@ -587,7 +585,7 @@ void SWF_DEFINE_SHAPE::GetShapeWithStyle(SWF_FILE* pFile)
 	m_numFillBits = numFillBits;
 	m_numLineBits = numLineBits;
 	
-	GetShapeRecords(pFile);
+	ParseShapeRecords(pFile);
 	
 	return;
 }
@@ -609,7 +607,7 @@ bool SWF_DEFINE_SHAPE::Load(SWF_FILE* pFile)
 	shapeBounds = pRect;
 
 	SWF_SHAPE_WITH_STYLE* pShapeWithStyle = new SWF_SHAPE_WITH_STYLE;
-	GetShapeWithStyle(pFile);
+	ParseShapeWithStyle(pFile);
 	return true;
 }
 
@@ -621,4 +619,28 @@ int SWF::LoadDefineShapeTag(SWF_RECORD_HEADER* pRecordHeader)
 	m_Dictionary.insert(std::pair<unsigned short, SWF_DEFINE_SHAPE*>(pDefineShape->GetCharacterID(), pDefineShape));
 	
 	return 0;
+}
+
+void SWF::Display()
+{
+	std::map<unsigned short, SWF_DEFINE_TAG*>::iterator it=m_Dictionary.begin();
+	for(it=m_Dictionary.begin(); it!=m_Dictionary.end(); it++)
+	{
+		SWF_DEFINE_SHAPE* pShape = (SWF_DEFINE_SHAPE*)(*it).second;
+		SWF_RECT bounds = pShape->GetShapeBounds();
+		SWF_FILL_STYLE_ARRAY* fillStyleArray = pShape->GetFillStyles();
+		
+		for(unsigned int i = 0; i < fillStyleArray->fillStyleCount; i++)
+		{
+			SWF_FILL_STYLE_SOLID fillStyle = fillStyleArray->fillStylesSolid[i];
+			glColor3ub(fillStyle.color.red, fillStyle.color.green, fillStyle.color.blue);
+		}
+		
+		bounds.Xmin /= 20;
+		bounds.Xmax /= 20;
+		bounds.Ymin /= 20;
+		bounds.Ymax /= 20;
+		
+		glRectf(bounds.Xmin,bounds.Ymin,bounds.Xmax,bounds.Ymax);
+	}
 }
