@@ -246,11 +246,14 @@ class SWF_DEFINE_SHAPE : public SWF_DEFINE_TAG
 		~SWF_DEFINE_SHAPE(){};
 		bool Load(SWF_FILE* pFile);
 		
+		SWF_RECT GetShapeBounds(){return *shapeBounds;}
+		SWF_FILL_STYLE_ARRAY* GetFillStyles(){return &m_FillStyles;}
+		
 	private:		
-		void GetShapeWithStyle(SWF_FILE* pFile);
-		void GetFillStyles(SWF_FILE* pFile);
-		void GetLineStyles(SWF_FILE* pFile);
-		void GetShapeRecords(SWF_FILE* pFile);
+		void ParseShapeWithStyle(SWF_FILE* pFile);
+		void ParseFillStyles(SWF_FILE* pFile);
+		void ParseLineStyles(SWF_FILE* pFile);
+		void ParseShapeRecords(SWF_FILE* pFile);
 		
 		SWF_RECT* shapeBounds;
 		
@@ -288,7 +291,12 @@ class SWF
 		SWF();
 		~SWF();
 		int LoadSWF(const char* path);
+		
 		static void GetRect(SWF_RECT* rect, SWF_FILE* pFile);
+		SWF_HEADER GetHeader(){return *m_pHeader;}
+		SWF_RGB GetBackgroundColor(){return m_BackgroundColor;}
+		
+		void Display();
 		
 	private:
 		int LoadHeader(SWF_FILE* file);		
@@ -303,6 +311,7 @@ class SWF
 		SWF_HEADER* m_pHeader;
 		SWF_FILE_ATTRIBUTES* m_pAttributes;
 		SWF_DEFINE_SCENE_AND_FRAME_LABEL_DATA* m_pSceneAndFrameLabelData;
+		SWF_RGB m_BackgroundColor;
 		
 		std::map<unsigned short, SWF_DEFINE_TAG*> m_Dictionary;
 };
